@@ -39,9 +39,10 @@
     - 파이썬 패키지인 pip를 최신 버전으로 업그레이드
     - pip를 이용해 클라우드포메이션 린터 설치
     <img width="556" height="348" alt="Image" src="https://github.com/user-attachments/assets/6e68a5a2-5a36-424e-ab1c-8ac7dde9ccb7" />
-    
-   <img width="305" height="65" alt="Image" src="https://github.com/user-attachments/assets/154082c6-a548-4af5-9679-19bf09c3485a" />
+    <img width="305" height="65" alt="Image" src="https://github.com/user-attachments/assets/154082c6-a548-4af5-9679-19bf09c3485a" />
+   
 4. 비주얼 스튜디오 코드에 CloudFormation Linter extension 설치
+
    <img width="528" height="152" alt="Image" src="https://github.com/user-attachments/assets/ddd7ceca-59c8-4880-8e22-ad7457ae4930" />
 
     
