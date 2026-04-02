@@ -1,0 +1,277 @@
+# 1. AWS에서 동작하는 웹 서비스 구조와 원리 파악하기
+
+AWS의 웹 서비스는 기본적으로 클라우드 기반으로 구축되며, 그 중심이 되는 서비스는 다음과 같은 구성 요소들이 포함된다.
+
+- AWS IAM : 사용자 및 AWS 리소스에 대한 액세스를 제어하는 권한 관리 서비스
+- 아마존 EC2 : AWS에서 제공하는 가상 클라우드 서버
+- 아마존 RDS : 다양한 데이터베이스 엔진을 제공하는 관계형 데이터베이스
+- 아마존 S3 : 객체(파일 및 데이터)를 저장하는 객체 스토리지 서비스
+
+<AWS 4가지 기본 서비스를 이용한 웹 서비스의 구성>
+
+<img width="1398" height="577" alt="Image" src="https://github.com/user-attachments/assets/ce5a2024-9730-4379-96eb-5ee776e49331" />
+
+1. 사용자가 AWS 서비스인 **세션 관리자**를 이용해 EC2 인스턴스로 접속 시도
+2. EC2 인스턴스에서는 세션 관리자를 이용할 수 있는 권한과 S3에 대한 액세스 권한을 가진 **IAM 역할 추가**
+3. S3에서는 정적 데이터를 관리하거나, EC2 인스턴스의 상호작용을 통해 데이터를 주고받음
+4. EC2 인스턴스에서 RDS로 접근해 데이터베이스 관리, 쿼리 관리
+5. 사용자는 설치한 **AWS CLI**를 이용하여 접속하고자 하는 AWS 환경으로 세션 관리자 포트 포워딩 세션을 생성
+6. 포트 포워딩 세션을 생성하면 사용자 환경과 AWS를 이어주는 **세션 관리자 터널**이 생성됨
+    
+    생성된 터널을 이용해 사용자 환경에서 EC2 인스턴스, RDS로 접속 가능
+    
+
+# 2. 권한 관리 서비스, AWS IAM 파악하기
+
+AWS에서 권한 관리는 주로 AWS IAM을 활용해 이루어진다.
+
+예외로 데이터 관리와 보안에 아마존 S3와 백업과 복원 등을 지원하는 AWS 백업의 백업 볼트와 같은 서비스를 이용해 자체적인 액세스 정책을 설정해 관리할 수도 있다.
+
+## 2.1 AWS IAM이란?
+
+IAM (Identity and Access Management)
+
+- AWS 계정 내에서 각 사용자, 그룹 또는 리소스에 대한 권한을 중앙 집중적으로 관리
+- AWS 리소스에 대한 액세스 제어, 각 사용자에게 필요한 작업만 수행할 수 있는 권한 부여
+
+## 2.2 AWS IAM 살펴보기
+
+AWS IAM을 구성하는 서비스는 크게 4가지로 나눌 수 있다.
+
+- IAM 사용자 : 개별적으로 식별되는 사용자, AWS 리소스에 접근하는 자격증명을 보유
+- IAM 그룹 : IAM 사용자를 그룹으로 묶어서 정리하는 서비스
+- IAM 정책 : 어떤 사용자/리소스에 대해 어떤 작업이 허용되는지 정의하는 서비스
+- IAM 역할 : IAM 정책을 담고 있으며, AWS 서비스에 권한을 부여하는 데 사용되는 서비스
+
+### IAM 사용자
+
+- 특정 역할과 권한을 갖는 개별 사용자
+- 개별적으로 식별되며, 부여받은 권한을 바탕으로 AWS 리소스를 제어
+- 일반적으로 루트 사용자에 의해 생성/관리
+- AWS 내에서 세분화된 권한 관리와 보안 강화에 사용되는 서비스
+
+**루트 사용자와 IAM 사용자의 관계**
+
+- 루트 사용자 : 모든 사용자의 최상위 계층, 관리자 권한 → AWS의 모든 작업 수행 가능
+- 보안 목적을 위해 루트 사용자의 권한을 최소화하고자 할 때 IAM 사용자를 생성
+    - 해당 사용자에게 필요한 최소한의 리소스에 대한 권한을 부여하는 것 권장
+
+**IAM 사용자 접속 방법**
+
+기본적으로 AWS CLI 접속 방법을 지원하며, 추가적으로 AWS 관리 콘솔 접속 방법을 선택할 수 있다.
+
+> AWS CLI : 명령 프롬프트에서 AWS 리소스를 관리하는 통합 도구
+AWS 관리 콘솔 : 모든 리소스를 시각적으로 관리할 수 있는 웹 인터페이스
+> 
+
+### IAM 그룹
+
+AWS에서는 같은 권한을 가진 사용자를 묶어 관리하는 IAM 그룹을 제공한다.
+
+<img width="1160" height="788" alt="Image" src="https://github.com/user-attachments/assets/0764a9d9-21ed-4cab-a432-80369cdded6b" />
+
+1. 개발 부서는 개발에 필요한 권한만 부여받음
+    - 해당 부서에 속한 모든 사용자에게 권한 상속
+2. 보안 부서도 보안에 필요한 권한만 부여받음
+    - 해당 부서에 속한 모든 사용자에게 권한 상속
+
+IAM 그룹 기능은 권한에 따라 그룹을 분리하여 효율적으로 권한 부여와 관리를 할 수 있도록 도와준다.
+
+### IAM 정책
+
+IAM 정책을 통해 IAM 사용자, IAM 그룹, 리소스에 부여할 권한을 생성할 수 있다.
+
+- AWS 관리형 정책
+    - AWS가 생성 및 관리하는 정책
+    - 사용자가 직접 정책 수정 불가, 정해진 권한만 사용 가능
+- 고객 관리형 정책
+    - 사용자가 생성,  관리할 수 있는 정책
+    - 시각적인 형식이나 JSON 형식으로 권한 정의
+- 인라인 정책
+    - IAM 사용자, IAM 그룹, IAM 역할에 대해 일대일 관계를 유지하는 정책
+    - 하나의 IAM 사용자, IAM 그룹, IAM 역할에 적용되는 기능
+    - 각 IAM 사용자, IAM 그룹, IAM 역할이 삭제될 때 적용된 인라인 정책도 삭제
+
+### IAM 역할
+
+- AWS 리소스에 적용되는 기능
+- 다른 AWS 서비스에서 IAM 역할을 가지고 특정 작업을 수행할 수 있도록 권한 부여, 제한할 때 사용
+- 일반적으로 복수의 IAM 정책 생성 → IAM 역할에 추가 → IAM 역할을 특정한 리소스에 추가
+    - 복수의 IAM 정책은 각 다른 권한 정의
+- IAM 역할과 AWS 서비스는 일대일 대응 관계
+    - 생성된 리소스는 한 가지 IAM 역할만 부여받을 수 있음
+
+<img width="908" height="535" alt="Image" src="https://github.com/user-attachments/assets/b441b690-5bf4-4448-81f9-18c43d11ca40" />
+
+1. S3에 액세스할 수 있는 IAM 정책과 다른 리소스와 상호 작용할 수 있는 정책 생성, IAM 역할에 추가
+2. IAM 역할을 EC2 인스턴스에 추가
+3. EC2 인스턴스에서 S3에 액세스 가능
+
+# 3. AWS IAM 생성하기
+
+## 3.1 클라우드포메이션으로 AWS 사용자 생성하기
+
+```yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create IAM User
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters: #유저 이름과 비밀번호 입력을 위한 파라미터
+  UserName:
+    Description: IAM User Name.
+    Type: String
+  UserPassword: # 비밀번호는 AWS 콘솔 환경에서의 노출을 피하기 위해 파라미터로 입력받기
+    Description: IAM User Password.
+    Type: String
+    NoEcho: true # NoEcho : 콘솔, 명령줄 도구, API에 표시되지 않도록 파라미터값 숨김
+# ------------------------------------------------------------#
+#  Create IAM User
+# ------------------------------------------------------------#
+Resources:
+  IAMUser:
+    Type: AWS::IAM::User 
+    Properties: # 사용자 이름, 비밀번호, 할당할 권한 지정
+      UserName: !Ref UserName # 파라미터에서 입력한 유저 이름을 참조
+      LoginProfile:
+        Password: !Ref UserPassword # 파라미터에서 입력한 비밀번호를 참조
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess # IAM 사용자에게 관리자 권한을 할당 -> 개인 환경이 아닌 경우 작업을 수행할 수 있는 최소한의 권한만 선택
+# ------------------------------------------------------------#
+#  Create IAM AccessKey & SecretKey
+# ------------------------------------------------------------#
+  IAMUserAccessKey: 
+    Type: AWS::IAM::AccessKey # CLI를 사용하기 위해 액세스 및 시크릿 키 생성
+    Properties:
+      UserName: !Ref IAMUser
+
+  AccessKeySecretManager:
+    Type: AWS::SecretsManager::Secret # 액세스 키 및 시크릿 키를 시크릿 매니저에 저장
+    Properties: # 생성할 보안 암호 이름, 저장할 암호 입력
+      Name: !Sub ${IAMUser}-credentials
+      SecretString: !Sub "{\"accessKeyId\":\"${IAMUserAccessKey}\",\"secretKeyId\":\"${IAMUserAccessKey.SecretAccessKey}\"}"
+```
+
+> AWS 시크릿 관리자 : 데이터베이스, 애플리케이션의 보안 인증 및 암호를 관리하는 서비스
+> 
+
+## 3.2 UI로 불러와 AWS 사용자 리소스 생성하기
+
+1. 클라우드포메이션 스택 생성
+    1. 스택 이름 입력
+        
+     <img width="1442" height="710" alt="Image" src="https://github.com/user-attachments/assets/a45f6a6f-a28a-4821-a341-86e72997dc39" />
+        
+    2. 파라미터 부분의 사용자 이름, 비밀번호 입력
+
+   <img width="1441" height="567" alt="Image" src="https://github.com/user-attachments/assets/5bdbdd38-0d7c-4ac6-b000-bdc23c13158e" />
+        
+    3. 해당 항목 체크
+
+   <img width="1178" height="245" alt="Image" src="https://github.com/user-attachments/assets/b47519b0-6711-4ef0-9acb-67177e6be589" />
+        
+2. 스택 생성 이후 생성된 IAM 사용자 및 권한 확인
+
+   <img width="1449" height="408" alt="Image" src="https://github.com/user-attachments/assets/5cfafde5-234b-436a-88c3-fd895b8e5690" />
+
+   <img width="1129" height="298" alt="Image" src="https://github.com/user-attachments/assets/3e837027-2ad6-47fc-b063-2f728cab5ed0" />
+    
+3. IAM 사용자의 액세스 키, 시크릿 키 확인
+    1. AWS Secrets Manager 콘솔 접속
+
+    <img width="1166" height="222" alt="Image" src="https://github.com/user-attachments/assets/11c241b8-cbfb-47f9-89cf-3a6fffa8b45d" />
+    
+    b. 개요>보안 암호 값에서 확인
+    
+4. 계정 ID 확인
+5. AWS에 로그인
+<BR>
+
+트러블슈팅
+    
+- IAM>사용자>권한 정책 탭에 권한이 뜨지 않고 에러 메시지 발생
+    
+   <img width="1110" height="619" alt="Image" src="https://github.com/user-attachments/assets/3a9b3a1b-2e0a-4bdf-9b89-3cff315ccf10" />
+    
+- 스택의 상태가 ROLLBACK_COMPLETED로 표시
+
+   <img width="1447" height="253" alt="Image" src="https://github.com/user-attachments/assets/35336a71-860d-4d35-8b1e-20ec8c7f9d79" />   
+    
+- 해당 스택의 이벤트 탭에서 에러 원인 확인
+    
+- IAM 비밀번호 정책 위반
+    - 최소 하나의 대문자, 특수문자 포함 필요
+    
+   <img width="1449" height="375" alt="Image" src="https://github.com/user-attachments/assets/be35d2df-275c-4a20-9ed5-8837a955402c" />  
+    
+    ⇒ 스택 삭제 후 재생성
+    
+
+## 3.3 AWS CLI 환경 구성하기
+
+루트 사용자를 이용해 AWS CLI 환경을 구성해보자.
+
+### 윈도우에서의 CLI 환경 구성
+
+1.  AWS CLI 설치 파일 다운로드
+    - `https://awscli.amazonaws.com/AWSCLIV2.msi`
+    - Powershell에서 `aws --version` 으로 CLI 버전 확인
+        
+        
+2. AWS 콘솔 화면에서 액세스 키 생성
+    - 보안 자격 증명>AWS IAM 자격 증명>액세스 키 만들기
+3. AWS CLI 사용을 위한 액세스 키 설정
+    - 사용 사례에 CLI 선택
+    - 생성한 액세스 키, 시크릿 키는 별도로 보관하거나 시크릿 관리자에 저장하여 관리
+    
+    <img width="1120" height="363" alt="Image" src="https://github.com/user-attachments/assets/14d7d431-5d3d-4421-9dc0-f2c3e03a54ff" />
+    
+4. 구성 및 자격증명 파일 설정
+    
+    ```powershell
+    // AWS 설정 확인
+    aws configure list
+    
+    // AWS 구성 설정 진행
+    aws configure
+    
+    // 액세스 키, 시크릿 키, 리전, 포맷 형식 입력
+    AWS Access Key ID [None] : 액세스 키
+    AWS Secret Access Key [None] : 시크릿 키
+    Default region name [None] : ap-northeast-2
+    Default output format [None] : json
+    
+    ```
+    
+
+    <img width="665" height="106" alt="Image" src="https://github.com/user-attachments/assets/e28b423f-3292-4805-873b-5548cd26f981" /> 
+    
+    - `aws sts get-caller-identity` 로 사용자 정보 요청, 반환된 정보 확인
+
+## 3.4 AWS MFA 설정하기
+
+AWS에서는 루트 사용자 또는 IAM 사용자를 이용할 때 보안을 고려해 MFA 설정이 필수이다.
+
+1. 구성 및 자격증명 파일 설정
+    
+    ```powershell
+    aws iam create-virtual-mfa-device --virtual-mfa-device-name haewon-lee-mfa --bootstrap-method QRCodePNG --outfile C:\Users\haewon\cotato_13th\AWS-Cloud-Study\haewon-lee-mfa.png
+    ```
+    
+    - `aws iam create-virtual-mfa-device` 가상 MFA 디바이스 생성
+    - `--virtual-mfa-device-name` 가상 디바이스 이름 지정
+    - `--bootstrap-method QRCodePNG` 가상 디바이스의 QR 코드 이미지 다운로드
+    - `--outfile` 내려받을 QR 코드 이미지 경로 지정
+2. 가상 MFA 디바이스의 시리얼 넘버 확인, 복사
+3. IAM 사용자에게 MFA 디바이스설정
+    
+    ```powershell
+    aws iam enable-mfa-device --user-name gc-lee-haewon --serial-number arn:aws:iam::XXXXXXXXXX:mfa/haewon-lee-mfa --authentication-code1 843008 --authentication-code2 421737
+    ```
+    
+    - `aws iam enable-mfa-device` 사용자에게 MFA 디바이스 설정
+    - `--serial-number` 복사한 시리얼 넘버 지정
+    - `code 1`, `code 2` 내려받은 QR코드 이미지를 이용해 MFA 코드를 연속 두번 입력
+    - `aws iam list-users --query "Users[].UserName”` 현재 계정의 모든 사용자 목록 확인
+4. AWS 로그인하여 MFA 코드를 요구하는지 확인
+    - QR 코드 스캔하여 MFA 코드 입력
