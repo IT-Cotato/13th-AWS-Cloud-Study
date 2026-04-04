@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create IAM Role
+# ------------------------------------------------------------
+# Input Parameters
+# ------------------------------------------------------------
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+# ------------------------------------------------------------#
+#  Create IAM Role
+# ------------------------------------------------------------#
+Resources:
+  EC2IAMRole:
+    Type: AWS::IAM::Role # IAM 역할 생성
+    DeletionPolicy: Delete # 생성한 스택을 삭제할 떄 리소스가 함께 삭제 -> Delete / 유지되기를 원하면 -> Retaion
+    Properties:
+      RoleName: !Sub ${SystemName}-${EnvName}-ec2-role
+      AssumeRolePolicyDocument: # IAM 역할에 추가할 정책 설정
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns: # AWS 관리형 정책
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" # 세션 관리자 접속을 도와준다.
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile # IAM 인스턴스 프로파일 생성
+    Properties:
+      InstanceProfileName: !Sub ${SystemName}-${EnvName}-ec2-role
+      Path: "/"
+      Roles:
+        - Ref: EC2IAMRole
+# ------------------------------------------------------------
+# Output Parameters
+# ------------------------------------------------------------
+Outputs:
+  # IAM Profile
+  InstanceProfile:
+    Value: !Ref EC2InstanceProfile
+    Export:
+      Name: !Sub ${EnvName}-ec2-role
