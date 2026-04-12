@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create RDS
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+  RDSMasterUserName: # 아마존 RDS의 관리자 이름
+    Description: Staging RDS DB Master User Name.
+    Default: "grsys"
+    Type: String
+  RDSMasterPassword: # 비밀번호 설정
+    Description: Staging RDS DB Master Password.
+    Type: String
+    NoEcho: true
+  RDSMaintenanceWindow: # MaintenanceWindow : AWS에서 진행하는 패치 혹은 유저가 직접 설정한 값을 적용하기 위한 시간
+    Description: Staging Enter MaintenanceWindow(UTC)
+    Type: String
+    Default: "sat:18:00-sat:19:00" # KST：[日] 03:00 - 04:00
+
+# ------------------------------------------------------------#
+#  Create RDS
+# ------------------------------------------------------------#
+Resources:
+  RDSInstance:
+    Type: AWS::RDS::DBInstance # 아마존 RDS 생성을 위한 타입 입력
+    Properties: # 아마존 RDS의 이름과 생성될 초기 데이터베이스 이름(grdb), 캐릭터 셋, DB 인스턴스 유형 지정
+      DBInstanceIdentifier: !Sub ${SystemName}-${EnvName}-rds
+      DBName: "grdb" # 초기 데이터베이스 이름
+      DBInstanceClass: db.t4g.micro
+      Engine: mysql # 엔진과 엔진 버전 설정
+      EngineVersion: '8.0'
+      Port: 3306 # MySQL 디폴트 포트인 3306 이용
+      MultiAZ: false #　multiAZ 설정 없음
+      AutoMinorVersionUpgrade: false
+      PubliclyAccessible: false # 외부와의 접근 차단
+      AvailabilityZone: # 서브넷의 가용 영역 지정
+        Fn::Select:
+          - 0 # ap-northeast-2a 이용
+          - Fn::GetAZs: ""
+      StorageType: "gp2" # 스토리지 유형과 크기, 암호화 설정
+      AllocatedStorage: "20"
+      StorageEncrypted: true
+      BackupRetentionPeriod: 0 # 자동 백업 무효화
+      MasterUsername: !Ref RDSMasterUserName # 파라미터에서 지정한 관리자 이름과 비밀번호, MaintenanceWindow 시간 지정
+      MasterUserPassword: !Ref RDSMasterPassword
+      PreferredMaintenanceWindow: !Ref RDSMaintenanceWindow # 유지 보수
+      VPCSecurityGroups: # 보안 그룹과 서브넷 그룹, 파라미터 그룹, 옵션 그룹 지정
+        - Fn::ImportValue: !Sub ${EnvName}-rds-sg
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      DBParameterGroupName: !Ref RDSParameterGroup
+      OptionGroupName: !Ref RDSOptionGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-rds
+        - Key: Env
+          Value: !Sub ${EnvName}
+
+  # ------------------------------------------------------------#
+  #  Create SubnetGroup
+  # ------------------------------------------------------------#
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup # 서브넷 그룹을 생성하기 위한 타입 이름
+    Properties: # 서브넷 그룹의 이름과 설명, 아마존 RDS를 배치할 서브넷 설정
+      DBSubnetGroupName: !Sub ${SystemName}-${EnvName}-dbsub
+      DBSubnetGroupDescription: !Sub ${SystemName}-${EnvName}-dbsub Subnet Group
+      SubnetIds: # 프라이빗 서브넷 지정
+        - Fn::ImportValue: !Sub ${EnvName}-datastore-subnet-1a
+        - Fn::ImportValue: !Sub ${EnvName}-datastore-subnet-1b
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-dbsub
+        - Key: Env
+          Value: !Sub ${EnvName}
+
+  # ------------------------------------------------------------#
+  #  Create ParameterGroup
+  # ------------------------------------------------------------#
+  RDSParameterGroup:
+    Type: AWS::RDS::DBParameterGroup # 파라미터 그룹을 생성하는 타입 이름
+    Properties: # 파라미터 그룹 이름과 설명, 패밀리 지정
+      DBParameterGroupName: !Sub ${SystemName}-${EnvName}-dbpg8
+      Description: !Sub ${SystemName}-${EnvName}-dbpg8 Parameter
+      Family: 'mysql8.0' # 생성할 RDS 엔진 유형과 같은 패밀리 선택
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-dbpg8
+        - Key: Env
+          Value: !Sub ${EnvName}
+
+  # ------------------------------------------------------------#
+  #  Create  OptionGroup
+  # ------------------------------------------------------------#
+  RDSOptionGroup:
+    Type: AWS::RDS::OptionGroup # 옵션 그룹을 생성하기 위한 타입 이름
+    Properties: # 옵션 그룹의 이름과 설명, 아마존 RDS에서 사용하는 엔진 유형과 엔진 버전 선택
+      OptionGroupName: !Sub ${SystemName}-${EnvName}-dbog8
+      OptionGroupDescription: !Sub ${SystemName}-${EnvName}-dbog8 Option Group
+      EngineName: "mysql"
+      MajorEngineVersion: "8.0"
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-dbog8
+        - Key: Env
+          Value: !Sub ${EnvName}
+
+# ------------------------------------------------------------
+# Output Parameters
+# ------------------------------------------------------------
+Outputs:
+  # RDS
+  RDSInstance:
+    Value: !Ref RDSInstance
+    Export:
+      Name: !Sub ${SystemName}-rds
