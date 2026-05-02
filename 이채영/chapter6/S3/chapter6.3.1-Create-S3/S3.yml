@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create S3
+# ------------------------------------------------------------
+# Input Parameters
+# ------------------------------------------------------------
+Parameters: # 버킷 이름은 AWS의 모든 리전과 모든 계정에서 고유해야 하므로 클라우드포메이션 스택 생성 시 버킷 이름을 변경할 수 있도록 파라미터 지정
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+  BucketName:
+    Description: "Bucket name."
+    Type: String
+    Default: "chaeyoung-20260427"
+# ------------------------------------------------------------#
+# Create S3 Bucket
+# ------------------------------------------------------------#
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket # S3 버킷 생성에 사용할 AWS::S3::Bucket 타입 입력
+    Properties: # 속성에는 S3 버킷 이름을 지정하는 BucketName 설정
+      BucketName: !Sub ${SystemName}-${EnvName}-${BucketName}
+      PublicAccessBlockConfiguration: # 외부 액세스 차단
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration: # 생명주기 규칙 설정
+        Rules:
+          - Id: !Sub ${SystemName}-lifecycle-bucket # 생명주기 규칙 이름 입력
+            # Prefix: Backup/ # 생명주기 규칙을 적용할 경로 지정 (ex. S3 버킷 Backup 폴더에만 생명주기 규칙을 적용하고 싶으면 Prefix: Backup/를 입력해 지정한 경로에 규칙 적용)
+            Status: Enabled # 생명주기 규칙 활성화 (Disabled : 비활성화)
+            ExpirationInDays: 90 # 객체 만료 기간 90일
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-${BucketName}
+        - Key: Env
+          Value: !Sub ${EnvName}
+#------------------------------------------------------------
+# Output Parameters
+#------------------------------------------------------------
+Outputs:
+  S3Bucket:
+    Value: !Ref S3Bucket
+    Export:
+      Name: !Sub ${EnvName}-${BucketName}
