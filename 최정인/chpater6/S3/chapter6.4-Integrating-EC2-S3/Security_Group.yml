@@ -28,26 +28,6 @@ Resources:
           Value: !Sub ${SystemName}-${EnvName}-ec2-sg
         - Key: Env
           Value: !Sub ${EnvName}
-# ------------------------------------------------------------#
-#  Create RDS Security Group
-# ------------------------------------------------------------#
-  RDSSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: !Sub ${SystemName}-${EnvName}-rds-sg
-      GroupDescription: !Sub ${SystemName}-${EnvName}-rds-sg
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 3306
-          ToPort: 3306
-          SourceSecurityGroupId: !GetAtt EC2SecurityGroup.GroupId
-      VpcId:
-        Fn::ImportValue: !Sub ${EnvName}-vpc
-      Tags:
-        - Key: Name
-          Value: !Sub ${SystemName}-${EnvName}-rds-sg
-        - Key: Env
-          Value: !Sub ${EnvName}
 # ------------------------------------------------------------
 # Output Parameters
 # ------------------------------------------------------------
@@ -57,7 +37,3 @@ Outputs:
     Value: !Ref EC2SecurityGroup
     Export:
       Name: !Sub ${EnvName}-ec2-sg
-  RDSSecurityGroup:
-    Value: !Ref RDSSecurityGroup
-    Export:
-      Name: !Sub ${EnvName}-rds-sg
