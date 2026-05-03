@@ -35,7 +35,7 @@ Resources:
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      ImageId: !Ref EC2AMI
       InstanceType: !Ref InstanceType
       KeyName: !Ref NewKeyPair
       IamInstanceProfile: 
