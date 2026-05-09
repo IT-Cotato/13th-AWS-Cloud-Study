@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description:
+  Create ALB or S3 Bucket
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+# ------------------------------------------------------------#
+#  Target Group
+# ------------------------------------------------------------#
+Resources:
+  ALBTargetGroup: # 로드 밸런서의 대상 그룹 리소스 이름 지정
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup # 대상 그룹을 생성할 타입 지정
+    Properties:
+      VpcId: # 대상 그룹이 생성될 VPC 지정
+        Fn::ImportValue: !Sub ${EnvName}-vpc
+      Name: !Sub ${SystemName}-${EnvName}-tgp
+      Protocol: HTTP # 대상 그룹에서 사용할 포트와 프로토콜, 상태 확인 Health Check에 사용할 값들 지정
+      Port: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: "/"
+      HealthCheckPort: "traffic-port"
+      HealthyThresholdCount: 5 # 정상 임계 값
+      UnhealthyThresholdCount: 2 # 비정상 임계값
+      HealthCheckTimeoutSeconds: 5 # 제한 시간
+      HealthCheckIntervalSeconds: 60 # 간격
+      Matcher:
+        HttpCode: 200 # 성공 코드
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-tgp
+        - Key: Env
+          Value: !Sub ${EnvName}
+      Targets: # 대상 그룹에 추가할 EC2 인스턴스 지정
+        - Id:
+            Fn::ImportValue: !Sub ${EnvName}-ec2
+          Port: 80
+  # ------------------------------------------------------------#
+  #  internet-facing ALB
+  # ------------------------------------------------------------#
+  InternetFacingALB: # 로드 밸런서의 리소스 이름 지정
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer # 로드 밸런서를 생성할 타입 지정
+    Properties:
+      Name: !Sub ${SystemName}-${EnvName}-alb
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-alb
+        - Key: Env
+          Value: !Sub ${EnvName}
+      Scheme: "internet-facing" # Scheme는 로드 밸런서를 외부로 공개할지, 내부에서만 사용할지 선택하는 옵션 (이 코드에서는 외부에 공개)
+      LoadBalancerAttributes: # 로드 밸런서의 속성값 지정
+        - Key: "deletion_protection.enabled" # true로 설정하면 실수로 인한 로드 밸런서 삭제를 방지
+          Value: false
+        - Key: "idle_timeout.timeout_seconds" # EC2 인스턴스와 로드 밸런서의 연결 설정으로 해당 시간 동안 아무런 데이터를 보내지 않으면 연결 종료
+          Value: 60
+      SecurityGroups: # 로드 밸런서의 보안 그룹 지정
+        - Fn::ImportValue: !Sub ${EnvName}-alb-sg
+      Subnets: # 서브넷 지정
+        - Fn::ImportValue: !Sub ${EnvName}-public-subnet-1a
+        - Fn::ImportValue: !Sub ${EnvName}-public-subnet-1b
+      Type: application # 로드 밸런서의 타입 지정
+  # ------------------------------------------------------------#
+  #  Set ALB Listner
+  # ------------------------------------------------------------#
+  ALBListenerHTTP: # 로드 밸런서의 리스너 규칙 추가를 위한 리소스 이름 지정
+    Type: AWS::ElasticLoadBalancingV2::Listener # 로드 밸런서의 리스너 규칙을 추가할 타입 지정
+    Properties: # 접속하고자 하는 포트와 프로토콜 지정
+      Port: 80
+      Protocol: HTTP
+      DefaultActions: # 대상 그룹 지정
+        - TargetGroupArn: !Ref ALBTargetGroup
+          Type: forward # 로드 밸런서에 도착한 요청을 대상 그룹으로 전달하는 방식 지정 (forward : 로드 밸런서에서 수신한 요청을 지정된 대상 그룹으로 직접 전달)
+      LoadBalancerArn: !Ref InternetFacingALB # 리스너 규칙을 추가할 로드 밸런서 지정
+# ------------------------------------------------------------
+# Output Parameters
+# ------------------------------------------------------------
+Outputs:
+  # ALB
+  InternetFacingALB:
+    Value: !Ref InternetFacingALB
+    Export:
+      Name: !Sub ${EnvName}-alb
