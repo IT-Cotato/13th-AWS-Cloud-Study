@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create Security Group
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+
+# ------------------------------------------------------------#
+#  Create EC2 Security Group
+# ------------------------------------------------------------#
+Resources:
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup # 보안 그룹을 생성
+    Properties:
+      GroupName: !Sub ${SystemName}-${EnvName}-ec2-sg # 보안 그룹 이름을 지정
+      GroupDescription: !Sub ${SystemName}-${EnvName}-ec2-sg # 보안 그룹 설명
+      VpcId:
+        Fn::ImportValue: !Sub ${EnvName}-vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-ec2-sg
+        - Key: Env
+          Value: !Sub ${EnvName}
+
+  # ------------------------------------------------------------#
+  #  Create RDS Security Group
+  # ------------------------------------------------------------#
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${SystemName}-${EnvName}-rds-sg # 보안 그룹 이름
+      GroupDescription: !Sub ${SystemName}-${EnvName}-rds-sg # 보안 그룹 설명
+      SecurityGroupIngress: # RDS에서는 MySQL을 이용하므로 MySQL의 포트인 3306 포트 개방
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !GetAtt EC2SecurityGroup.GroupId # EC2 인스턴스에서의 접속 허용
+      VpcId:
+        Fn::ImportValue: !Sub ${EnvName}-vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-rds-sg
+        - Key: Env
+          Value: !Sub ${EnvName}
+
+# ------------------------------------------------------------
+# Output Parameters
+# ------------------------------------------------------------
+Outputs:
+  # Security Groups
+  EC2SecurityGroup:
+    Value: !Ref EC2SecurityGroup
+    Export:
+      Name: !Sub ${EnvName}-ec2-sg
+
+  RDSSecurityGroup:
+    Value: !Ref RDSSecurityGroup
+    Export:
+      Name: !Sub ${EnvName}-rds-sg

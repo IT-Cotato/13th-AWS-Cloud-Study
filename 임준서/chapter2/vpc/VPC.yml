@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: VPC Network Set
+# ------------------------------------------------------------
+# Input Parameters
+# ------------------------------------------------------------
+Parameters:   # 파라미터를 이용해 각 항목에 사용자 지정 값 입력
+  SystemName: # 구축할 환경의 시스템 이름 정의
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:   # 구축할 환경의 이름을 정의
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+  VPCParam:  # VPCParam이라는 파라미터 이름 정의하여 VPC의 CIDR 정의
+    Description: gr-product-vpc
+    Type: String
+    Default: 10.0.0.0/24
+  PublicSubnet1aParam:  # 퍼블릭 서브넷의 CIDR 정의
+    Description: gr-product-public-subnet-1a
+    Type: String
+    Default: 10.0.0.0/27
+  PublicSubnet1bParam:  # 프라이빗 서브넷의 CIDR 정의
+    Description: gr-product-public-subnet-1b
+    Type: String
+    Default: 10.0.0.32/27
+  WebSubnet1aParam:
+    Description: gr-product-web-subnet-1a
+    Type: String
+    Default: 10.0.0.64/27
+  WebSubnet1bParam:
+    Description: gr-product-web-subnet-1b
+    Type: String
+    Default: 10.0.0.96/27
+  DatastoreSubnet1aParam:  # 해당 프라이빗 서브넷은 외부와의 연결이 완전히 차단되어 있어서 주로 데이터베이스 등을 배치
+    Description: gr-product-datastore-subnet-1a
+    Type: String
+    Default: 10.0.0.128/27
+  DatastoreSubnet1bParam:
+    Description: gr-product-datastore-subnet-1b
+    Type: String
+    Default: 10.0.0.160/27
+#-------------------------------------------------------------------
+# Create VPC、Subnet
+#-------------------------------------------------------------------
+Resources:  # 생성하고자 하는 리소스 정의
+  VPC:  # 생성할 리소스의 이름 지정
+    Type: "AWS::EC2::VPC" # 리소스 내에서 Type을 이용해 생성할 서비스 정의
+    Properties: # 생성할 리소스의 속성 정의, !Ref 내장함수를 사용하여 파라미터를 불러와서 CIDR 정의
+      CidrBlock: !Ref VPCParam
+      EnableDnsSupport: "true"
+      EnableDnsHostnames: "true"
+      InstanceTenancy: default
+      Tags: # 생성할 리소스의 이름과 환경 이름 입력. 키밸류 형식, !Sub을 통해 파라미터 문자열 변수 불러옴
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-vpc
+        - Key: Env
+          Value: !Sub ${EnvName}
+  PublicSubnet1a: # PublicSubnet1a 서브넷 정의
+    Type: "AWS::EC2::Subnet"
+    Properties: # 서브넷 속성 지정
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: !Ref PublicSubnet1aParam # 파라미터를 불러와 서브넷의 CIDR 지정
+      VpcId: !Ref VPC # 속할 VPC 지정
+      Tags:  # 서브넷의 이름과 환경명 지정
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-public-subnet-1a
+        - Key: Env
+          Value: !Sub ${EnvName}
+  PublicSubnet1b:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: !Ref PublicSubnet1bParam
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-public-subnet-1b
+        - Key: Env
+          Value: !Sub ${EnvName}
+  WebSubnet1a:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: !Ref WebSubnet1aParam
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-web-subnet-1a
+        - Key: Env
+          Value: !Sub ${EnvName}
+  WebSubnet1b:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: !Ref WebSubnet1bParam
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-web-subnet-1b
+        - Key: Env
+          Value: !Sub ${EnvName}
+  DatastoreSubnet1a:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      CidrBlock: !Ref DatastoreSubnet1aParam
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-datastore-subnet-1a
+        - Key: Env
+          Value: !Sub ${EnvName}
+  DatastoreSubnet1b:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: !Ref DatastoreSubnet1bParam
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-datastore-subnet-1b
+        - Key: Env
+          Value: !Sub ${EnvName}
+  #-------------------------------------------------------------------
+  # Create Internet Gateway
+  #-------------------------------------------------------------------
+  InternetGateway: # 인터넷 게이트웨이로 리소스 이름 지정
+    Type: "AWS::EC2::InternetGateway" # 생성할 인터넷 게이트웨이 정의
+    Properties: # 태그를 이용해 이름과 환경명 지정
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-igw
+        - Key: Env
+          Value: !Sub ${EnvName}
+  InternetGatewayAttachment: # VPC 연결 필요 없으므로 연결을 위한 리소스 별도 생성
+    Type: "AWS::EC2::VPCGatewayAttachment" # 인터넷 게이트웨이 연결을 위한 VPCG 정의
+    Properties: # 연결하고자 하늰 VPC 입력
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  #-------------------------------------------------------------------
+  # Create Route Tables
+  #-------------------------------------------------------------------
+  PublicRTB :  # 라우터 테이블을 생성하기 위한 리소스 이름 지정
+    Type: "AWS::EC2::RouteTable" # Type을 이용해 라우팅 테이블 정의
+    Properties:  # 라우팅 테이블 생성할 VPC 지정
+      VpcId: !Ref VPC
+      Tags: # 라우팅 테이블 태그력
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-public-rtb
+        - Key: Env
+          Value: !Sub ${EnvName}
+  WebRTB :
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-web-rtb
+        - Key: Env
+          Value: !Sub ${EnvName}
+  DatastoreRTB :
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-datastore-rtb
+        - Key: Env
+          Value: !Sub ${EnvName}
+  #-------------------------------------------------------------------
+  # Route Set
+  #-------------------------------------------------------------------
+  PublicRoute: # 리소스 이름 지정
+    Type: "AWS::EC2::Route" # Type을 이용해 라우팅 Route 정의
+    Properties: # 라우팅 테이블 입력, 목적지 CIDR 입력, 인터넷 게이트웨이력
+      RouteTableId: !Ref PublicRTB
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+  #-------------------------------------------------------------------
+  # Route Tables Subnet Association
+  #-------------------------------------------------------------------
+  PublicRTBAssociation1: # 리소스 이름 지정
+    Type: "AWS::EC2::SubnetRouteTableAssociation" # Type에서 SubnetRouteTableAssociation 지정
+    Properties: # 서로 연결할 서브넷과 라우팅 테이블 입력
+      SubnetId: !Ref PublicSubnet1a
+      RouteTableId: !Ref PublicRTB
+  PublicRTBAssociation2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnet1b
+      RouteTableId: !Ref PublicRTB
+  WebRTBAssociation1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref WebSubnet1a
+      RouteTableId: !Ref WebRTB
+  WebRTBAssociation2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref WebSubnet1b
+      RouteTableId: !Ref WebRTB
+  DatastoreRTBAssociation1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref DatastoreSubnet1a
+      RouteTableId: !Ref DatastoreRTB
+  DatastoreRTBAssociation2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref DatastoreSubnet1b
+      RouteTableId: !Ref DatastoreRTB
+# ------------------------------------------------------------
+# Output Parameters
+# ------------------------------------------------------------
+Outputs: # 템플릿에서 생성한 리소스를 출력하고 반환
+  # VPC
+  VPC: # 이름 지정
+    Value: !Ref VPC # 출력할 리소스정
+    Export: # 어떤 이름으로 리소스 출력할지 지정
+      Name: !Sub ${EnvName}-vpc
+  # public-subnet
+  PublicSubnet1a:
+    Value: !Ref PublicSubnet1a
+    Export:
+      Name: !Sub ${EnvName}-public-subnet-1a
+  PublicSubnet1b:
+    Value: !Ref PublicSubnet1b
+    Export:
+      Name: !Sub ${EnvName}-public-subnet-1b
+  # Web-subnet
+  WebSubnet1a:
+    Value: !Ref WebSubnet1a
+    Export:
+      Name: !Sub ${EnvName}-web-subnet-1a
+  WebSubnet1c:
+    Value: !Ref WebSubnet1b
+    Export:
+      Name: !Sub ${EnvName}-web-subnet-1b
+  # Datastore-subnet
+  DatastoreSubnet1a:
+    Value: !Ref DatastoreSubnet1a
+    Export:
+      Name: !Sub ${EnvName}-datastore-subnet-1a
+  DatastoreSubnet1c:
+    Value: !Ref DatastoreSubnet1b
+    Export:
+      Name: !Sub ${EnvName}-datastore-subnet-1b

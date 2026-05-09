@@ -84,7 +84,7 @@ mkdir -p [본인이름]/chapter0
 └── chapter0/
     ├── 00장 AWS 실습 환경 구축하기.md
     └── VPC/
-        └── VPC.yml
+        └── IAM_User.yml
 ```
 
 ### 3. 커밋 및 푸시

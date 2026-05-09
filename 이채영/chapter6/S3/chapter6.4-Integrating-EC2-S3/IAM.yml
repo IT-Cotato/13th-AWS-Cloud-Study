@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create IAM Role
+# ------------------------------------------------------------
+# Input Parameters
+# ------------------------------------------------------------
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+# ------------------------------------------------------------#
+#  Create IAM Role
+# ------------------------------------------------------------#
+Resources:
+  EC2IAMRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      RoleName: !Sub ${SystemName}-${EnvName}-ec2-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub ${SystemName}-${EnvName}-ec2-role
+      Path: "/"
+      Roles:
+        - Ref: EC2IAMRole
+  #-------------------------------------------------------------------
+  # Create IAM Policy (EC2)
+  #-------------------------------------------------------------------
+  EC2Policy:
+    Type: AWS::IAM::ManagedPolicy # IAM 정책 생성
+    Properties: # 속성에는 IAM 정책 이름을 지정하는 ManagedPolicyName과 권한을 설정하는 PolicyDocument가 있음
+      ManagedPolicyName: !Sub ${SystemName}-${EnvName}-policy-ec2
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow # 지정한 Action을 허용할지 거부할지 선택
+            Action: # 해당 권한이 어떤 AWS 서비스의 어떤 작업들을 수행할지 지정
+              - s3:ListAllMyBuckets
+            Resource: arn:aws:s3:::* # 권한을 적용할 리소스 지정 (여기서는 생성된 모든 S3 버킷의 리스트를 불러온다.)
+          - Effect: Allow
+            Action: # S3 버킷에 대한 Get, Delete, Put 권한 지정
+              - s3:Get*
+              - s3:Delete*
+              - s3:Put*
+            Resource:
+              - "arn:aws:s3:::gr-product-chaeyoung-20260427/*"
+      Roles: # 해당 정책을 IAM 역할에 추가
+        - !Ref EC2IAMRole
+# ------------------------------------------------------------
+# Output Parameters
+# ------------------------------------------------------------
+Outputs:
+  # IAM Profile
+  InstanceProfile:
+    Value: !Ref EC2InstanceProfile
+    Export:
+      Name: !Sub ${EnvName}-ec2-role
