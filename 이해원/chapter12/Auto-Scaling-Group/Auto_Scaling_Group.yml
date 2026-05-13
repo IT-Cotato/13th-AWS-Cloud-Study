@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create Auto Scaling
+
+# ------------------------------------------------------------
+# Input Parameters: 템플릿의 재사용성을 결정하는 변수들
+# ------------------------------------------------------------
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+  KeyPairName: 
+    Description: gr-product-ec2 EC2 Key Pair
+    Type: String
+    Default: gr-product-ec2-key
+  EC2AMI: 
+    Description: gr-product-ec2 EC2 AMI
+    Type: String
+    Default: ami-02d081c743d676996
+  InstanceType:
+    Description: gr-product-ec2 EC2 instance type
+    Type: String
+    Default: t3.micro
+
+# ------------------------------------------------------------#
+# Create LaunchTemplate: 인스턴스 생성을 위한 '설계도'
+# ------------------------------------------------------------# 
+Resources:
+  NewKeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: !Ref KeyPairName
+
+  WebLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate # 시작 템플릿 생성
+    Properties:
+      LaunchTemplateName: !Sub ${SystemName}-${EnvName}-AppLaunchConfiguration
+      LaunchTemplateData:
+        # 다른 스택(네트워크/IAM)에서 정의한 값을 가져와 연결 (결합도 관리)
+        IamInstanceProfile:
+          Arn:
+            Fn::ImportValue: !Sub ${EnvName}-ec2-role-arn
+        BlockDeviceMappings: 
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeType: gp3 # 볼륨 유형
+            VolumeSize: 100 # 볼륨 크기
+            DeleteOnTermination: true
+            Encrypted: true
+        NetworkInterfaces: 
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          Groups:
+            - Fn::ImportValue: !Sub ${EnvName}-ec2-sg
+        ImageId: !Ref EC2AMI
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref KeyPairName
+        # 인스턴스 생성 시 자동 실행될 스크립트 (프로비저닝의 자동화)
+        # EC2 인스턴스의 사용자 데이터를 사용해 아파치 서버 설치
+        # 스케일 작업으로 EC2 인스턴스가 생성될 때 아파치가 설치된 인스턴스 생성
+        UserData: !Base64 | 
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install httpd-2.4.51 -y
+          sudo systemctl start httpd
+          sudo systemctl enable httpd
+          sudo httpd -v
+          sudo cp /usr/share/httpd/noindex/index.html /var/www/html/index.html
+
+# ------------------------------------------------------------#
+# Create Auto Scaling Group: 인스턴스의 수량과 가용성 관리
+# ------------------------------------------------------------# 
+  WebAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup # 오토스케일링 그룹 생성
+    Properties:
+      AutoScalingGroupName: !Sub ${SystemName}-${EnvName}-asg
+      # 최신 버전의 템플릿을 참조하도록 설정
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebLaunchTemplate
+        Version: !GetAtt WebLaunchTemplate.LatestVersionNumber
+      MetricsCollection: # 오토스케일링 그룹에서 집계된 데이터를 클라우드워치로 보낼 설정값 지정
+        - Granularity: 1Minute # 1분 간격으로 전송
+          Metrics: # 어떤 데이터를 집계해보낼지 설정
+            - GroupMinSize 
+            - GroupMaxSize
+      # 운영 핵심: 인스턴스의 상태 체크 방식 (EC2 기반 또는 ELB 기반 선택 가능)
+      HealthCheckType : EC2
+      # 가용성 핵심: 최소/최대/희망 인스턴스 수 정의
+      MaxSize: '3'
+      MinSize: '2'
+      DesiredCapacity: '2'
+      # 인스턴스 생성 후 헬스체크를 유예하는 시간 (초)
+      HealthCheckGracePeriod : '300'
+      # 고가용성(HA) 핵심: 여러 가용 영역(AZ)에 인스턴스를 분산 배치
+      VPCZoneIdentifier:
+        - "Fn::ImportValue": !Sub ${EnvName}-public-subnet-1a
+        - "Fn::ImportValue": !Sub ${EnvName}-public-subnet-1b
+      Tags:
+        # PropagateAtLaunch가 true여야 생성되는 EC2에도 태그가 붙음
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-ec2
+          PropagateAtLaunch: true
+        - Key: Env
+          Value: !Sub ${EnvName}
+          PropagateAtLaunch: true
