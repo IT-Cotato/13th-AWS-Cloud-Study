@@ -49,3 +49,7 @@ Outputs:
     Value: !Ref EC2InstanceProfile
     Export:
       Name: !Sub ${EnvName}-ec2-role
+  InstanceProfileArn:
+    Value: !GetAtt EC2InstanceProfile.Arn
+    Export:
+      Name: !Sub ${EnvName}-ec2-role-arn
