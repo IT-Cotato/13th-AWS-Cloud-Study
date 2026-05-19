@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create ECS
+# ------------------------------------------------------------
+# Input Parameters
+# ------------------------------------------------------------
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+# ------------------------------------------------------------#
+# Create IAM Role
+# ------------------------------------------------------------#
+Resources:
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${SystemName}-${EnvName}-ecs-task-execution-role
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy # ECS 작업을 실행하는 데 필요한 주요 권한
+      Policies:
+        - PolicyName: !Sub ${SystemName}-${EnvName}-ecs-task-allow-pullthrough
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:CreateRepository # ECR의 리포지터리를 생성할 수 있는 권한
+                  - ecr:BatchImportUpstreamImage # ECR에 외부 이미지를 가져올 수 있는 권한
+                Resource: "*"
+
+  TaskRole: # 아마존 ECS Exec를 사용하기 위한 권한 생성. Exec: 컨테이너에 로그인할 수 있는 기능
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      RoleName: !Sub ${SystemName}-${EnvName}-ecs-task-exec-role
+  TaskRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${SystemName}-${EnvName}-ecs-task-role-policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "ssmmessages:CreateControlChannel"
+              - "ssmmessages:CreateDataChannel"
+              - "ssmmessages:OpenControlChannel"
+              - "ssmmessages:OpenDataChannel"
+            Resource: '*'
+      Roles:
+        - !Ref TaskRole
+  # ------------------------------------------------------------#
+  # Create ECS Cluster
+  # ------------------------------------------------------------#
+  ECSCluster:
+    Type: AWS::ECS::Cluster # 클러스터 타입과 이름 입력
+    Properties:
+      ClusterName: !Sub ${SystemName}-${EnvName}-cluster
+  # ------------------------------------------------------------#
+  # Create ECS Service
+  # ------------------------------------------------------------#
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: # ECS보다 로드 밸런서가 먼저 생성되도록 설정
+      - InternetFacingALB
+    Properties:
+      ServiceName: !Sub ${SystemName}-${EnvName}-service # 서비스의 이름 지정
+      Cluster: !Ref ECSCluster # 생성한 클러스터 지정
+      EnableExecuteCommand: true # true: Exec를 사용해 컨테이너에 로그인할 수 있다.
+      DesiredCount: 2 # 생성할 인스턴스 개수 (기본값: 1)
+      LaunchType: FARGATE # 파게이트 지정
+      LoadBalancers: # 로드 밸런서와 컨테이너의 정보 입력, 컨테이너 포트는 작업 정의에서 지정한 포트와 동일해야 한다.
+        - ContainerName: !Sub ${SystemName}-task
+          ContainerPort: 80
+          TargetGroupArn: !Ref ALBTargetGroup
+      TaskDefinition: !Ref ECSTaskDefinition # 작업 정의 지정
+      NetworkConfiguration: # 컨테이너의 보안 그룹과 서브넷 지정
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - Fn::ImportValue: !Sub ${EnvName}-fargate-sg
+          Subnets:
+            - Fn::ImportValue: !Sub ${EnvName}-web-subnet-1a
+            - Fn::ImportValue: !Sub ${EnvName}-web-subnet-1b
+  # ------------------------------------------------------------#
+  # Create ECS Task
+  # ------------------------------------------------------------#
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${SystemName}-${EnvName}-task # 작업 이름 지정
+      ContainerDefinitions: # 컨테이너의 포트와 호스트 포트를 지정하며, ECR에 푸시한 이미지를 지정
+        - Name: !Sub ${SystemName}-task
+          PortMappings:
+            - ContainerPort: 80
+              HostPort: 80
+              Protocol: tcp
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/ecs-nginx:latest
+      Cpu: 512 # 서버의 CPU와 메모리를 지정
+      Memory: 2048
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn # 컨테이너가 맡을 수 있는 실행 역할을 의미하며, 작업의 컨테이너에는 이 역할에 지정된 접근 허가가 부여된다.
+      RequiresCompatibilities: # 파게이트 지정
+        - FARGATE
+      NetworkMode: awsvpc # 파게이트의 경우 EC2 인스턴스를 생성하는 것이 아니라 컨테이너만으로 서비스가 움직이기 때문에 컨테이너 본인이 ENI 관리. 이런 이유로 각 작업에 대해 ENI를 생성하고 관리할 수 있는 awsvpc 모드를 파게이트에서 사용해야 한다.
+      TaskRoleArn: !GetAtt TaskRole.Arn # 사용자를 대신해 작업 내 컨테이너에 AWS API를 호출할 수 있는 권한 설정
+  # ------------------------------------------------------------#
+  #  Target Group
+  # ------------------------------------------------------------#
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub ${EnvName}-vpc
+      Name: !Sub ${SystemName}-${EnvName}-tgp
+      Protocol: HTTP
+      Port: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: "/"
+      HealthCheckPort: "traffic-port"
+      HealthyThresholdCount: 5 # 정상 임계 값
+      UnhealthyThresholdCount: 2 # 비정상 임계값
+      HealthCheckTimeoutSeconds: 5 # 제한 시간
+      HealthCheckIntervalSeconds: 60 # 간격
+      TargetType: ip
+      Matcher:
+        HttpCode: 200 # 성공 코드
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-tgp
+        - Key: Env
+          Value: !Sub ${EnvName}
+  # ------------------------------------------------------------#
+  #  internet-facing ALB
+  # ------------------------------------------------------------#
+  InternetFacingALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${SystemName}-${EnvName}-alb
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-alb
+        - Key: Env
+          Value: !Sub ${EnvName}
+      Scheme: "internet-facing"
+      LoadBalancerAttributes:
+        - Key: "deletion_protection.enabled"
+          Value: false
+        - Key: "idle_timeout.timeout_seconds"
+          Value: 60
+      SecurityGroups:
+        - Fn::ImportValue: !Sub ${EnvName}-alb-sg
+      Subnets:
+        - Fn::ImportValue: !Sub ${EnvName}-public-subnet-1a
+        - Fn::ImportValue: !Sub ${EnvName}-public-subnet-1b
+      Type: application
+  # ------------------------------------------------------------#
+  #  Set ALB Listner
+  # ------------------------------------------------------------#
+  ALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - TargetGroupArn: !Ref ALBTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref InternetFacingALB
