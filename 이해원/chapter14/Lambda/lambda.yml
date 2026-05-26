@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: "2010-10-09"
+Description: Create Lambda
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------# 
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+
+# ------------------------------------------------------------#
+#  Create Lambda Role
+# ------------------------------------------------------------#
+Resources : 
+  LambdaIAMRole:
+    Type: AWS::AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      # 파라미터(SystemName, EnvName)를 조합하여 역할 이름 동적 생성
+      RoleName: !Sub ${SystemName}-${EnvName}-lambdarole
+      # AWS Lambda 서비스가 이 역할을 위임받아 사용할 수 있도록 신뢰 관계 설정
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Principal: 
+              Service: 
+                - "lambda.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+      Path: "/"
+      # Lambda 실행에 필요한 기본 관리형 정책 연결
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSLambda_FullAccess"
+
+# ------------------------------------------------------------#
+#  Create Lambda
+# ------------------------------------------------------------#
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${SystemName}-${EnvName}-function
+      # 인라인 코드로 간단한 Python 함수 정의 (index.py 파일로 생성됨)
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+              # TODO implement
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Hello from Lambda!')
+              }
+      # 실행할 파일명과 함수명 지정 (index.py의 lambda_handler 함수)
+      Handler: index.lambda_handler
+      # 위에서 생성한 IAM 역할의 ARN을 함수에 바인딩
+      Role: !GetAtt LambdaIAMRole.Arn
+      Runtime: python3.12
+      Timeout: 30
