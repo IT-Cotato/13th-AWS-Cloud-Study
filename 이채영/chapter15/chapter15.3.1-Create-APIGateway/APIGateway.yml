@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create API Gateway & Lambda
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+
+# ------------------------------------------------------------#
+#  Create Lambda Role
+# ------------------------------------------------------------#
+Resources :
+  LambdaIAMRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      RoleName: !Sub ${SystemName}-${EnvName}-lambdarole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSLambda_FullAccess"
+  # ------------------------------------------------------------#
+  #  Create Lambda
+  # ------------------------------------------------------------#
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${SystemName}-${EnvName}-function
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+              # TODO implement
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Hello from Lambda!')
+              }
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaIAMRole.Arn
+      Runtime: python3.12
+      Timeout: 30
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission # 람다 함수와 API 게이트웨이 통합 코드 작성
+    Properties:
+      Action: lambda:InvokeFunction # 람다 함수에서 사용할 수 있는 작업 정의 (여기서는 지정된 람다 함수 사용)
+      FunctionName: !Ref LambdaFunction # 대상이 되는 람다 함수 지정
+      Principal: apigateway.amazonaws.com # 람다 함수를 호출하는 AWS 서비스 지정
+      SourceArn: # API 게이트웨이의 Arn 입력
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/ANY/
+  # ------------------------------------------------------------#
+  #  Create REST API
+  # ------------------------------------------------------------#
+  ApiGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi # API 유형을 REST API로 선택
+    Properties:
+      Name: !Sub ${SystemName}-${EnvName}-api
+      EndpointConfiguration:
+        Types:
+          - REGIONAL # API 엔드포인트 유형은 지역(REGIONAL)로 설정
+
+  # ------------------------------------------------------------#
+  #  Create API Gateway Method
+  # ------------------------------------------------------------#
+  ApiGatewayMethod:
+    Type: AWS::ApiGateway::Method # Get 혹은 Post와 같은 요청을 받았을 때, 생성한 람다 함수로 라우팅하도록 설정
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: ANY
+      ResourceId: # API 게이트웨이에서 리소스를 고유하게 식별하는 데 사용하는 식별자
+        Fn::GetAtt: [ApiGatewayRestApi, RootResourceId]
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      Integration: # 람다로 라우팅해야 하므로 Integration 옵션 지정해 람다와 API 게이트웨이 통합
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: # 통합할 람다 함수 지정
+          Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - ":apigateway:"
+              - Ref: AWS::Region
+              - ":lambda:path/2015-03-31/functions/"
+              - Fn::GetAtt:
+                  - LambdaFunction
+                  - Arn
+              - "/invocations"
+      MethodResponses:
+        - StatusCode: 200
+
+  # ------------------------------------------------------------#
+  #  Create API Gateway Deployment
+  # ------------------------------------------------------------#
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      StageName: !Sub ${SystemName}-${EnvName}-stage
+    DependsOn: # 메서드가 먼저 생성되기까지 기다린 다음, 배포 진행 / 특정 리소스가 다른 리소스에 의존할 때 사용 -> 특정 리소스가 다른 리소스가 모두 생성된 후에 생성되도록
+      - ApiGatewayMethod
