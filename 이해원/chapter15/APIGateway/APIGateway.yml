@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create API Gateway & Lambda
+
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------# 
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+
+# ------------------------------------------------------------#
+#  Create Lambda Role
+# ------------------------------------------------------------#
+Resources : 
+  LambdaIAMRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      RoleName: !Sub ${SystemName}-${EnvName}-lambdarole
+      # AWS Lambda 서비스가 이 역할을 수임(Assume)할 수 있도록 신뢰 관계 설정
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Principal: 
+              Service: 
+                - "lambda.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+      Path: "/"
+      # Lambda 실행에 필요한 기본 권한 부여 (실무에서는 최소 권한 원칙 권장)
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSLambda_FullAccess"
+
+# ------------------------------------------------------------#
+#  Create Lambda
+# ------------------------------------------------------------#
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${SystemName}-${EnvName}-function
+      # 콘솔에서 직접 수정 가능한 인라인 형태의 Python 소스 코드 정의
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+              # TODO implement
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Hello from Lambda!')
+              }
+      # 인라인 코드(ZipFile)의 경우 기본 파일명이 index로 지정됨
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaIAMRole.Arn
+      Runtime: python3.12
+      Timeout: 30
+
+  # API Gateway가 이 Lambda 함수를 호출할 수 있도록 보안 통로 개방
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LambdaFunction
+      Principal: apigateway.amazonaws.com
+      # 특정 API Gateway의 모든 스테이지 및 메서드(/*/ANY/)로부터의 호출만 허용
+      SourceArn: 
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/ANY/
+
+# ------------------------------------------------------------#
+#  Create REST API 
+# ------------------------------------------------------------#
+  ApiGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub ${SystemName}-${EnvName}-api
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+# ------------------------------------------------------------#
+#  Create API Gateway Method 
+# ------------------------------------------------------------#
+  ApiGatewayMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: ANY # 모든 HTTP 메서드(GET, POST 등)를 이 엔드포인트 하나로 수신
+      # API의 최상위 루트 경로('/')에 메서드를 연결
+      ResourceId: 
+        Fn::GetAtt: [ApiGatewayRestApi, RootResourceId]
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      # API Gateway가 백엔드(Lambda)와 통신하는 방식 정의
+      Integration:
+        Type: AWS_PROXY # 클라이언트의 요청 프록시 전체를 Lambda로 그대로 전달
+        IntegrationHttpMethod: POST # API Gateway가 Lambda를 호출할 때는 항상 POST 방식을 사용함
+        # API Gateway가 Lambda 함수를 호출하기 위한 표준 포맷의 Amazon Resource Name(ARN) 생성
+        Uri:
+          Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - ":apigateway:"
+              - Ref: AWS::Region
+              - ":lambda:path/2015-03-31/functions/"
+              - Fn::GetAtt:
+                - LambdaFunction
+                - Arn
+              - "/invocations"
+      MethodResponses:
+        - StatusCode: 200
+
+# ------------------------------------------------------------#
+#  Create API Gateway Deployment 
+# ------------------------------------------------------------#
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      StageName: !Sub ${SystemName}-${EnvName}-stage
+    # 메서드(ApiGatewayMethod)가 완전히 생성된 이후에 배포가 진행되도록 순서 보장
+    DependsOn: 
+      - ApiGatewayMethod
