@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create Lambda
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+
+# ------------------------------------------------------------#
+#  Create Lambda Role
+# ------------------------------------------------------------#
+Resources :
+  LambdaIAMRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      RoleName: !Sub ${SystemName}-${EnvName}-lambdarole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSLambda_FullAccess" # 람다 함수의 모든 권한을 가지고 있다.
+# ------------------------------------------------------------#
+#  Create Lambda
+# ------------------------------------------------------------#
+  LambdaFunction:
+    Type: AWS::Lambda::Function # 람다 함수 생성
+    Properties:
+      FunctionName: !Sub ${SystemName}-${EnvName}-function
+      Code: # 람다 함수에서 실행할 코드 입력
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+              # TODO implement
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Hello from Lambda!')
+              }
+      Handler: index.lambda_handler # 람다가 실행할 메서드 이름
+      Role: !GetAtt LambdaIAMRole.Arn # 생성한 IAM 역할 지정
+      Runtime: python3.12
+      Timeout: 30 # Lambda가 함수를 중지하기 전에 실행할 수 있는 시간
