@@ -1,0 +1,55 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create API Gateway & Lambda
+
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+
+# ------------------------------------------------------------#
+# Create Lambda
+# ------------------------------------------------------------#
+Resources:
+  GetDataLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${SystemName}-${EnvName}-GetData
+      Code:
+        ZipFile: |
+          import boto3
+          dynamodb = boto3.resource('dynamodb')
+          table = dynamodb.Table("gr-product-db")  # 조회할 DynamoDB 테이블명
+          def lambda_handler(event, context):
+              response = table.scan()  # 테이블 전체 데이터 조회
+              return response['Items']
+      Handler: index.lambda_handler  # 인라인 코드의 진입점
+      Role: !GetAtt LambdaIAMRole.Arn
+      Runtime: python3.12
+      Timeout: 30
+
+  LambdaIAMRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      RoleName: !Sub ${SystemName}-${EnvName}-dynamodbrole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"  # Lambda가 이 역할을 사용
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"  # DynamoDB 전체 액세스 권한
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole"  # DynamoDB Streams 실행 권한
