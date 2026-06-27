@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create API Gateway & Lambda
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+
+# ------------------------------------------------------------#
+#  Create Lambda
+# ------------------------------------------------------------#
+Resources :
+  GetDataLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${SystemName}-${EnvName}-GetData
+      Code: # 람다 함수 코드에는 다이나모DB 테이블을 참조해, 데이터를 스캔 / 스캔한 데이터는 response에 저장해 반환
+            # boto3 : 파이썬용 AWS SDK
+        ZipFile: |
+          import boto3
+          dynamodb = boto3.resource('dynamodb')
+          table = dynamodb.Table("gr-product-db")
+
+          def lambda_handler(event, context):
+              response = table.scan()
+              return response['Items']
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaIAMRole.Arn # 생성한 IAM 역할을 람다 함수에 연결
+      Runtime: python3.12
+      Timeout: 30
+
+  LambdaIAMRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      RoleName: !Sub ${SystemName}-${EnvName}-dynamodbrole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: # 이전에는 ec2.amazon.com으로 지정했지만, 이번에는 AWS 람다에 역할을 할당하기 때문에 lambda 입력
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns: # 해당 역할에 AWS 관리 정책 할당
+        - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess" # 다이나모DB에 대한 전체 접근 권한 허용
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole" # 다이나모DB 스트림에 대한 목록 및 읽기 접근 권한 부여
