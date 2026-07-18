@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create CloudWatch Alamrs
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+  Ec2InstanceId: # EC2 인스턴스 ID 선택
+    Description: Ec2 InstanceId
+    Type: AWS::EC2::Instance::Id
+
+# ------------------------------------------------------------#
+#  Create CloudWatch Alarms
+# ------------------------------------------------------------#
+Resources:
+  C2CPUUtilizationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmActions: # 경보가 발생했을 때 이메일을 통지하도록 설정
+        - Fn::ImportValue: !Sub ${EnvName}-sns
+      AlarmName: !Sub ${SystemName}-${EnvName}-Alarms
+      MetricName: CPUUtilization # CPU 사용률 모니터링하고 경보하도록
+      Namespace: AWS/EC2
+      Statistic: Average # 평균값 계산
+      Period: 60 # 모니터링 간격 (60초)
+      EvaluationPeriods: 2 # 다음 60초 동안도 CPU 평균 사용률이 40%를 넘는다면 데이터 포인트 수가 증가해 합산 데이터 포인트 수가 [2]가 되어, 경보가 발생하고 이메일로 통지 실시
+      Threshold: 40
+      TreatMissingData: breaching
+      OKActions:
+        - Fn::ImportValue: !Sub ${EnvName}-sns
+      ComparisonOperator: GreaterThanOrEqualToThreshold # 임곗값보다 크거나 임곗값과 같음
+      Dimensions: # 모니터링할 리소스를 어떻게 지정할지 정한다.
+        - Name: InstanceId
+          Value: !Ref Ec2InstanceId
