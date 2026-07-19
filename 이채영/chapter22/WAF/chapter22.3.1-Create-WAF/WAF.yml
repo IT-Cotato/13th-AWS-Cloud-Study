@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: AWS WAF WebACL
+# ------------------------------------------------------------
+# Input Parameters
+# ------------------------------------------------------------
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+# ------------------------------------------------------------#
+# Create WAF
+# ------------------------------------------------------------#
+Resources:
+  WebACL:
+    Type: AWS::WAFv2::WebACL # AWS WAF 생성
+    Properties:
+      DefaultAction: # 규칙에 해당하는 항목이 없을 경우 요청을 허용할지 거부할지 선택
+        Allow: {}
+      Scope: CLOUDFRONT # 아마존 클라우드프론트에 AWS WAF 도입
+      Description: WebACL
+      Name: !Sub ${SystemName}-${EnvName}-ACL01
+      VisibilityConfig: # 클라우드워치 메트릭을 활성화하고, 샘플링된 요청 정보 모니터링 (샘플링: AWS WAF가 필터링하는 웹 요청 중 일부를 선택해 자세히 분석)
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub ${SystemName}-${EnvName}-WebACLMetrics
+        SampledRequestsEnabled: true
+      Rules: # AWS WAF에 관리형 규칙 추가
+        - Name: AWS-AWSManagedRulesAmazonIpReputationList
+          Priority: 0 # 규칙의 우선순위 설정
+          OverrideAction:
+            Count: {} # 허용 또는 차단에 대한 규칙 무효호ㅓㅏ하고 해당 요청이 몇 번 발생하는지 카운트
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesAmazonIpReputationList
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesAmazonIpReputationList
+            SampledRequestsEnabled: true
+        - Name: AWS-AWSManagedRulesSQLiRuleSet
+          Priority: 1
+          OverrideAction:
+            Count: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesSQLiRuleSet
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesSQLiRuleSet
+            SampledRequestsEnabled: true
+        - Name: AWS-AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 2
+          OverrideAction:
+            Count: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesKnownBadInputsRuleSet
+            SampledRequestsEnabled: true
+  # ------------------------------------------------------------#
+  # Create WAF Log Bucket
+  # ------------------------------------------------------------#
+  WAFLogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "aws-waf-logs-${SystemName}-${EnvName}-${AWS::AccountId}-${AWS::Region}-acl01"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: !Sub "aws-waf-logs-${SystemName}-${EnvName}-acl-logs-lifecycle"
+            Status: Enabled
+            ExpirationInDays: 365
+      Tags:
+        - Key: Name
+          Value: !Sub "aws-waf-logs-${SystemName}-${EnvName}-${AWS::AccountId}-${AWS::Region}-acl01"
+  # ------------------------------------------------------------#
+  # WAF Logging Configuration
+  # ------------------------------------------------------------#
+  WAFLoggingConfiguration:
+    Type: 'AWS::WAFv2::LoggingConfiguration' # AWS WAF의 로그 저장소 지정
+    Properties:
+      ResourceArn: !GetAtt WebACL.Arn # AWS WAF의 Arn 지정
+      LogDestinationConfigs: # 로그를 저장할 리소스의 Arn 지정
+        - !GetAtt WAFLogBucket.Arn
+#------------------------------------------------------------
+# Output Parameters
+#------------------------------------------------------------
+Outputs:
+  #WebACL
+  WebACL:
+    Value: !Ref WebACL
+    Export:
+      Name: WebACL
+  #WebACL Arn
+  WebACLArn:
+    Value: !GetAtt WebACL.Arn
+    Export:
+      Name: WebACLARN
+  #S3 Log Bucket
+  WAFLogBucket:
+    Value: !Ref WAFLogBucket
+    Export:
+      Name: WAFLogBucket
+  #S3 Log Bucket Arn
+  WAFLogBucketArn:
+    Value: !GetAtt WAFLogBucket.Arn
+    Export:
+      Name: WAFLogBucketARN
