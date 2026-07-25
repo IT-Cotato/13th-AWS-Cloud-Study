@@ -22,7 +22,7 @@ Resources:
     Properties:
       TopicName: !Sub ${SystemName}-${EnvName}-sns
       Subscription:
-        - Endpoint: # 통지 받을 이메일 입력
+        - Endpoint: saon0410@gmail.com
           Protocol: email
 
 # ------------------------------------------------------------
