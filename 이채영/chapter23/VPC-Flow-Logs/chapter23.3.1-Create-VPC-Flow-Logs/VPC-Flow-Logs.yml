@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create VPC Flow Logs
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  SystemName:
+    Description: "System name of each resource names."
+    Type: String
+    Default: "gr"
+  EnvName:
+    Description: "Environment name of each resource names."
+    Type: String
+    Default: "product"
+  BucketName:
+    Description: "Bucket name."
+    Type: String
+    Default: "bucket"
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Select the VPC
+
+# ------------------------------------------------------------#
+#  Create VPC Flow Logs Bucket
+# ------------------------------------------------------------#
+Resources:
+  FlowLogsBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub ${SystemName}-${EnvName}-${BucketName}-${AWS::AccountId}-${AWS::Region}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: !Sub ${SystemName}-${EnvName}-${BucketName}-lifecycle
+            Status: Enabled
+            ExpirationInDays: 365
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-${BucketName}
+
+  # ------------------------------------------------------------#
+  #  Create VPC Flow Logs
+  # ------------------------------------------------------------#
+  VPCFlowlogs:
+    Type: AWS::EC2::FlowLog # VPC Flow Logs 생성
+    Properties:
+      LogDestinationType: s3 # 로그를 보존할 리소스 선택
+      LogDestination: !GetAtt FlowLogsBucket.Arn # 보존할 S3 버킷의 Arn을 지정
+      ResourceId: # 트래픽을 모니터링할 VPC 지정
+        Ref: VpcId
+      ResourceType: VPC # VPC를 지정해 VPC를 모니터링하도록 한다. (NetworkInterface, Subnet, TransitGateway 등 모니터링 가능)
+      TrafficType: ALL # 모니터링할 트래픽 유형
+      Tags:
+        - Key: Name
+          Value: !Sub ${SystemName}-${EnvName}-flowlogs
